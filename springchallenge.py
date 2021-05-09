@@ -4,19 +4,16 @@ import math
 def debug(*args, **kwargs):
     print(*args, **kwargs, file=sys.stderr, flush=True)
 
-# Auto-generated code below aims at helping you parse
-# the standard input according to the problem statement.
-
-map = {}
 
 class Cell:
     def __init__(self, richness, neighbours):
-        self.richness= richness
+        self.richness = richness
         self.neighbours = [neigh for neigh in neighbours]
         self.own = False
         self.type = "empty"
         self.size_tree = 0
 
+map = {}
 number_of_cells = int(input())  # 37
 for i in range(number_of_cells):
     # index: 0 is the center cell, the next cells spiral outwards
@@ -25,6 +22,32 @@ for i in range(number_of_cells):
     index, richness, neigh_0, neigh_1, neigh_2, neigh_3, neigh_4, neigh_5 = [int(j) for j in input().split()]
     map[index] = Cell(richness, [neigh_0, neigh_1, neigh_2, neigh_3, neigh_4, neigh_5])
 
+def shadows_generated_by_this_cell(index, day):
+    i = 0
+    shadows = []
+    tmp = index
+    while map[index].size_tree > i:
+        tmp = map[tmp].neighbours[day % 6 * -1]
+        shadows.append(tmp)
+        i += 1
+    return shadows
+
+def being_shadowed_by(index, day):
+    tmp = index
+    shadowed = []
+    debug("DAY: ", day)
+    for i in range(3):
+        tmp = map[tmp].neighbours[(day % 6 + 3) % 6]
+        # debug("test:", tmp)
+        if map[tmp].size_tree > i and map[tmp].size_tree >= map[index].size_tree:
+            shadowed.append(tmp)
+    return shadowed
+
+def days_before_shadowed(index, day):
+    for i in range(6):
+        if len(being_shadowed_by(index, day + i) > 0:
+            return i
+    return 7
 
 list_possible_action = []
 
@@ -39,6 +62,12 @@ def calcul_heuristique(action):
 # game loop
 while True:
     day = int(input())  # the game lasts 24 days: 0-23
+    shadows = shadows_generated_by_this_cell(0, day)
+    debug("Ombres generes par la case 0 : ", shadows)
+    shadowed = being_shadowed_by(0, day)
+    debug("Cells generant de l'ombre a la case ", 0, " : ", shadowed)
+    days_before_sh = days_before_shadowed(0, day)
+    debug("Nb days before shadowed : ", days_before_sh)
     nutrients = int(input())  # the base score you gain from the next COMPLETE action
     # sun: your sun points
     # score: your current score
