@@ -11,7 +11,7 @@ class Cell:
         self.neighbours = [neigh for neigh in neighbours]
         self.own = False
         self.type = "empty"
-        self.size_tree = 0
+        self.size_tree = -1
 
 map = {}
 number_of_cells = int(input())  # 37
@@ -48,6 +48,47 @@ def days_before_shadowed(index, day):
         if len(being_shadowed_by(index, day + i) > 0:
             return i
     return 7
+
+def compute_cost_action(map, action):
+
+    def cost_seed(map):
+        cost = 0
+        for key, value in dict(map):
+            if map[key].size_tree == 0 and map[key].own:
+                cost += 1
+        return cost
+
+    def cost_grow(map, index):
+        if map[index].size_tree == 0:
+            cost = 1
+            for key, value in dict(map):
+                if map[key].own and map[key].size_tree == 1:
+                    cost += 1
+        elif map[index].size_tree == 1:
+            cost = 3
+            for key, value in dict(map):
+                if map[key].own and map[key].size_tree == 2:
+                    cost += 1
+        elif map[index].size_tree == 2:
+            cost = 7
+            for key, value in dict(map):
+                if map[key].own and map[key].size_tree == 3:
+                    cost += 1
+        return cost
+
+    if action.split(" ")[0] == "SEED":
+        cost = cost_seed(map)
+    elif action.split(" ")[0] == "GROW":
+        cost = cost_grow(map, action.split(" ")[1])
+    elif action.split(" ")[0] == "COMPLETE":
+        cost = 4
+    elif action == "WAIT":
+        cost = 0
+    else:
+        debug("L'action : ", action, " n'est pas geree")
+        cost = 0
+    return cost
+
 
 list_possible_action = []
 
