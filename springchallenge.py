@@ -151,14 +151,30 @@ def calcul_point_richness(cell):
 # - ne plus planter quand on ne peut pas faire pousser tout les arbres
 
 def seed_heuristique(action):
+    nb_tree = calcul_nb_arbre()
+    flag0 = False
+    flag1 = False
+    flag2 = False
+    if nb_tree[0] >= 1:
+        for cell in map:
+            if map[cell].size_tree == 1 and map[cell].own and not map[cell].is_dormant:
+                flag1 = True
+            elif map[cell].size_tree == 0 and map[cell].own and not map[cell].is_dormant:
+                flag0 = True
+            if map[cell].size_tree == 0:
+                flag2 = True
+        if (flag1 or flag0) and flag2:
+            return -1
+
+    potentiel = game.day_left * 3 - (1 + nb_tree[0]) - (3 + nb_tree[1]) - (7 + nb_tree[2]) - (3 * 3) - (3 * 2) - (3)
     cell = int(action.split()[2])
     heuristique = 0
     heuristique -= map[cell].potential_shadowed_by_us * 10
     heuristique += map[cell].potential_shadowed_by_him * 2
     heuristique += calcul_point_richness(cell) * 3 # GAME NUTRIENTS
-    if map[int(action.split()[1])].size_tree == 1:
-        heuristique = -1
-    return heuristique * 10
+    if map[int(action.split()[1])].size_tree == 1 or (game.day_left < 4 and flag2):
+        return -1
+    return heuristique + potentiel
 
 # dans liste GROW:
 # -/ cout
@@ -184,25 +200,42 @@ def cost_grow_tmp(map, index):
     return cost
 
 def grow_heuristique(action):
+    nb_tree = calcul_nb_arbre()
     cell = int(action.split()[1])
     heuristique = 0
+
+    size_tree = map[cell].size_tree
+    if size_tree == 0:
+        growth_cost = (1 + nb_tree[0]) + (3 + nb_tree[1]) + (7 + nb_tree[2]) + (3 * 3) + (3 * 2) + (3)
+    elif size_tree == 1:
+        growth_cost = (3 + nb_tree[1]) + (7 + nb_tree[2]) + (3 * 2) + (3)
+    elif size_tree == 2:
+        growth_cost = (7 + nb_tree[2]) + 3
+    
+    potentiel = game.day_left * 3 - growth_cost
+
+    own_block = 0
+    ennemy_block = 0
     for day in range(6): # ombrage généré supplémentaire
         for i in range(len(map[cell].shadow_potential[day])):
             if (map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree or map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree + 1) and i <= map[cell].size_tree:
                 if map[map[cell].shadow_potential[day][i]].own:
-                    heuristique -= map[map[cell].shadow_potential[day][i]].size_tree * 6 * 3
+                    own_block += map[map[cell].shadow_potential[day][i]].size_tree
+                    # heuristique -= map[map[cell].shadow_potential[day][i]].size_tree
                 else:
-                    heuristique += map[map[cell].shadow_potential[day][i]].size_tree * 3 * 3
+                    ennemy_block += map[map[cell].shadow_potential[day][i]].size_tree
+                    # heuristique += map[map[cell].shadow_potential[day][i]].size_tree
+    heuristique = potentiel * (1 + ennemy_block / 6 - (own_block * 2) / 6)
     tmp = days_before_shadowed(cell, game.day)
     map[cell].size_tree += 1
-    heuristique = (days_before_shadowed(cell, game.day) - tmp) * (map[cell].size_tree + 1)
+    heuristique += (days_before_shadowed(cell, game.day) - tmp) * (map[cell].size_tree + 1)
     map[cell].size_tree -= 1
     # heuristique -= compute_cost_action(map, action)
-    heuristique += calcul_point_richness(cell) # pour départager en cas d'égalité
+    heuristique += calcul_point_richness(cell) * 3 # pour départager en cas d'égalité
 
     # rajouté nutrients
-    if cost_grow_tmp(map, cell) > game.day_left and calcul_nb_arbre()[2] >= 1:
-        heuristique = 0
+    # if cost_grow_tmp(map, cell) > game.day_left and calcul_nb_arbre()[2] >= 1:
+    #     heuristique = 0
     return heuristique
 
 
@@ -215,16 +248,18 @@ def grow_heuristique(action):
 
 def complete_heuristique(cell):
     # a completer
+
     nb_tree = calcul_nb_arbre()
-    if game.day_left < game.day:
-        if nb_tree[1] <= nb_tree[2]:
-            heuristique = 1
-        else:
-            heuristique = 0
-    else:
-        heuristique = -100
-    heuristique *= calcul_point_richness(cell)
-    return heuristique * 10
+    heuristique = 0 - (3 * game.day_left * 1 / nb_tree[2]) + 4 * 3 + 4 * game.nutrients
+    # if game.day_left < game.day:
+    #     if nb_tree[1] <= nb_tree[2]:
+    #         heuristique = 1
+    #     else:
+    #         heuristique = 0
+    # else:
+    #     heuristique = -100
+    heuristique += calcul_point_richness(cell) * 4
+    return heuristique
 
 #  dans la liste des 3 meilleurs action (seed, grow, complete) :
 # - if no size_tree == 0 : SEED and day_left = enough to pousser l'arbre
@@ -235,19 +270,16 @@ def complete_heuristique(cell):
 
 def calcul_heuristique(action):
     list_action = action.split()
-    force_complete = 0
-    if game.day_left <= 3:
-        force_complete = 5000
     heuristique = 0
     if list_action[0] == "SEED":
         heuristique = seed_heuristique(action) / (compute_cost_action(map, action) + 1)
     elif list_action[0] == "GROW":
         heuristique = grow_heuristique(action) / (compute_cost_action(map, action) + 1)
     elif list_action[0] == "COMPLETE":
-        heuristique = complete_heuristique(int(list_action[1])) / (compute_cost_action(map, action) + 1) + force_complete
+        heuristique = complete_heuristique(int(list_action[1])) / (compute_cost_action(map, action) + 1)
     # elif list_action[0] == "WAIT":
     #     if game.day < 2:
-    #         heuristique = 500
+    #         heuristique = 0
 
     return heuristique
 
