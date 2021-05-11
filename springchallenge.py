@@ -30,7 +30,17 @@ class Cell:
         self.size_tree = -1
         self.is_dormant = is_dormant
         self.shadow_potential = {}
-
+        
+def calcul_nb_arbre():
+    list_tree = [0, 0, 0]
+    for i in map:
+        if map[i].size_tree == 1 and map[i].own:
+            list_tree[0] += 1
+        elif map[i].size_tree == 2 and map[i].own:
+            list_tree[1] += 1
+        elif map[i].size_tree == 3 and map[i].own:
+            list_tree[2] += 1
+    return list_tree
 
 def reset_infos():
     game.nb_tree_own = 0
@@ -94,17 +104,17 @@ def compute_cost_action(map, action):
 
     def cost_grow(map, index):
         if map[index].size_tree == 0:
-            cost = 1
+            cost = 0
             for key in dict(map):
                 if map[key].own and map[key].size_tree == 1:
                     cost += 1
         elif map[index].size_tree == 1:
-            cost = 3
+            cost = 0
             for key in dict(map):
                 if map[key].own and map[key].size_tree == 2:
                     cost += 1
         elif map[index].size_tree == 2:
-            cost = 7
+            cost = 0
             for key in dict(map):
                 if map[key].own and map[key].size_tree == 3:
                     cost += 1
@@ -123,8 +133,123 @@ def compute_cost_action(map, action):
         cost = 0
     return cost
 
+def calcul_point_richness(cell):
+    if map[cell].richness == 1:
+        return 0
+    elif map[cell].richness == 2:
+        return 2       
+    elif map[cell].richness == 3:
+        return 4    
+    else:
+        return 0
+
+# dans liste seed:
+# -/ ombrage generé sur nos arbres 
+# -/ ombrages generé sur arbres ennemi 
+# - if map free (ratio) == pas planter sur case generant de l'ombre pour nous (ratio = cell / nb_tree )
+# -/ richness (pondéré)
+# - ne plus planter quand on ne peut pas faire pousser tout les arbres
+
+def seed_heuristique(action):
+    cell = int(action.split()[2])
+    heuristique = 0
+    heuristique -= map[cell].potential_shadowed_by_us * 10
+    heuristique += map[cell].potential_shadowed_by_him * 2
+    heuristique += calcul_point_richness(cell) * 3 # GAME NUTRIENTS
+    if map[int(action.split()[1])].size_tree == 1:
+        heuristique = -1
+    return heuristique * 10
+
+# dans liste GROW:
+# -/ cout
+# -/ ombrage généré supplémentaire ()
+# -/ passage soleil si on grow ? 
+# -/ generation soleil (calcul heuristique)
+def cost_grow_tmp(map, index):
+    if map[index].size_tree == 0:
+        cost = 1
+        for key in dict(map):
+            if map[key].own and map[key].size_tree == 1:
+                cost += 1
+    elif map[index].size_tree == 1:
+        cost = 3
+        for key in dict(map):
+            if map[key].own and map[key].size_tree == 2:
+                cost += 1
+    elif map[index].size_tree == 2:
+        cost = 7
+        for key in dict(map):
+            if map[key].own and map[key].size_tree == 3:
+                cost += 1
+    return cost
+
+def grow_heuristique(action):
+    cell = int(action.split()[1])
+    heuristique = 0
+    for day in range(6): # ombrage généré supplémentaire
+        for i in range(len(map[cell].shadow_potential[day])):
+            if (map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree or map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree + 1) and i <= map[cell].size_tree:
+                if map[map[cell].shadow_potential[day][i]].own:
+                    heuristique -= map[map[cell].shadow_potential[day][i]].size_tree * 6 * 3
+                else:
+                    heuristique += map[map[cell].shadow_potential[day][i]].size_tree * 3 * 3
+    tmp = days_before_shadowed(cell, game.day)
+    map[cell].size_tree += 1
+    heuristique = (days_before_shadowed(cell, game.day) - tmp) * (map[cell].size_tree + 1)
+    map[cell].size_tree -= 1
+    # heuristique -= compute_cost_action(map, action)
+    heuristique += calcul_point_richness(cell) # pour départager en cas d'égalité
+
+    # rajouté nutrients
+    if cost_grow_tmp(map, cell) > game.day_left and calcul_nb_arbre()[2] >= 1:
+        heuristique = 0
+    return heuristique
+
+
+
+# - ombre qui est généré sur cette arbre
+# - prevoir fin de day pour couper tout les arbres de taille 3 (calcul heuristique)
+# - if nutriments high and ombrage léger and cost new size 3 high 
+
+
+
+def complete_heuristique(cell):
+    # a completer
+    nb_tree = calcul_nb_arbre()
+    if game.day_left < game.day:
+        if nb_tree[1] <= nb_tree[2]:
+            heuristique = 1
+        else:
+            heuristique = 0
+    else:
+        heuristique = -100
+    heuristique *= calcul_point_richness(cell)
+    return heuristique * 10
+
+#  dans la liste des 3 meilleurs action (seed, grow, complete) :
+# - if no size_tree == 0 : SEED and day_left = enough to pousser l'arbre
+# - Forcer full complete sur la fin and forcer complete a max tree (size 3) en fonction calcul premier tour
+
+
+# ON NE PLANTE PAS D UN ARBRE NIVEAU 1
+
 def calcul_heuristique(action):
-    return 0
+    list_action = action.split()
+    force_complete = 0
+    if game.day_left <= 3:
+        force_complete = 5000
+    heuristique = 0
+    if list_action[0] == "SEED":
+        heuristique = seed_heuristique(action) / (compute_cost_action(map, action) + 1)
+    elif list_action[0] == "GROW":
+        heuristique = grow_heuristique(action) / (compute_cost_action(map, action) + 1)
+    elif list_action[0] == "COMPLETE":
+        heuristique = complete_heuristique(int(list_action[1])) / (compute_cost_action(map, action) + 1) + force_complete
+    # elif list_action[0] == "WAIT":
+    #     if game.day < 2:
+    #         heuristique = 500
+
+    return heuristique
 
 def reception_info():
     # general game infos
