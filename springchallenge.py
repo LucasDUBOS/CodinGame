@@ -1,6 +1,7 @@
 import sys
 import math
 
+
 def debug(*args, **kwargs):
     print(*args, **kwargs, file=sys.stderr, flush=True)
 
@@ -9,7 +10,7 @@ class Game:
         self.number_of_cells = number_of_cells
         self.nutrients = nutrients
         self.day = day
-        self.day_left = self._day_left()
+        self.day_left = 24 - self.day
         self.sun = sun
         self.score = score
         self.opp_sun = opp_sun
@@ -18,8 +19,6 @@ class Game:
         self.number_of_trees = number_of_trees
         self.nb_tree_own = nb_tree_own
 
-    def _day_left(self):
-        return 24 - self.day
 
 class Cell:
     def __init__(self, richness, neighbours, is_dormant = False):
@@ -143,14 +142,15 @@ def calcul_point_richness(cell):
     else:
         return 0
 
-# dans liste seed:
-# -/ ombrage generé sur nos arbres 
-# -/ ombrages generé sur arbres ennemi 
-# - if map free (ratio) == pas planter sur case generant de l'ombre pour nous (ratio = cell / nb_tree )
-# -/ richness (pondéré)
-# - ne plus planter quand on ne peut pas faire pousser tout les arbres
+
 
 def seed_heuristique(action):
+    # dans liste seed:
+    # -/ ombrage generé sur nos arbres 
+    # -/ ombrages generé sur arbres ennemi 
+    # - if map free (ratio) == pas planter sur case generant de l'ombre pour nous (ratio = cell / nb_tree )
+    # -/ richness (pondéré)
+    # - ne plus planter quand on ne peut pas faire pousser tout les arbres
     nb_tree = calcul_nb_arbre()
     flag0 = False
     flag1 = False
@@ -176,12 +176,13 @@ def seed_heuristique(action):
         return -1
     return heuristique + potentiel
 
-# dans liste GROW:
-# -/ cout
-# -/ ombrage généré supplémentaire ()
-# -/ passage soleil si on grow ? 
-# -/ generation soleil (calcul heuristique)
+
 def cost_grow_tmp(map, index):
+    # dans liste GROW:
+    # -/ cout
+    # -/ ombrage généré supplémentaire ()
+    # -/ passage soleil si on grow ? 
+    # -/ generation soleil (calcul heuristique)
     if map[index].size_tree == 0:
         cost = 1
         for key in dict(map):
@@ -221,14 +222,12 @@ def grow_heuristique(action):
             if (map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree or map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree + 1) and i <= map[cell].size_tree:
                 if map[map[cell].shadow_potential[day][i]].own:
                     own_block += map[map[cell].shadow_potential[day][i]].size_tree
-                    # heuristique -= map[map[cell].shadow_potential[day][i]].size_tree
                 else:
                     ennemy_block += map[map[cell].shadow_potential[day][i]].size_tree
-                    # heuristique += map[map[cell].shadow_potential[day][i]].size_tree
-    heuristique = potentiel * (1 + ennemy_block / 6 - (own_block * 2) / 6)
+    heuristique = potentiel - (own_block * game.day_left / 6) + (ennemy_block * game.day_left / 6)
     tmp = days_before_shadowed(cell, game.day)
     map[cell].size_tree += 1
-    heuristique += (days_before_shadowed(cell, game.day) - tmp) * (map[cell].size_tree + 1)
+    heuristique += map[cell].size_tree if (days_before_shadowed(cell, game.day) - tmp) > 0 and tmp == 1 else 0 #soleil gagné en le montant maintenant
     map[cell].size_tree -= 1
     # heuristique -= compute_cost_action(map, action)
     heuristique += calcul_point_richness(cell) * 3 # pour départager en cas d'égalité
@@ -238,35 +237,38 @@ def grow_heuristique(action):
     #     heuristique = 0
     return heuristique
 
-
-
-# - ombre qui est généré sur cette arbre
-# - prevoir fin de day pour couper tout les arbres de taille 3 (calcul heuristique)
-# - if nutriments high and ombrage léger and cost new size 3 high 
-
-
-
 def complete_heuristique(cell):
     # a completer
-
+    # - ombre qui est généré sur cette arbre
+    # - prevoir fin de day pour couper tout les arbres de taille 3 (calcul heuristique)
+    # - if nutriments high and ombrage léger and cost new size 3 high 
     nb_tree = calcul_nb_arbre()
-    heuristique = 0 - (3 * game.day_left * 1 / nb_tree[2]) + 4 * 3 + 4 * game.nutrients
-    # if game.day_left < game.day:
-    #     if nb_tree[1] <= nb_tree[2]:
-    #         heuristique = 1
-    #     else:
-    #         heuristique = 0
-    # else:
-    #     heuristique = -100
+
+    # heuristique = 4 * 3 + 4 * game.nutrients - (3 * game.day_left * (1 / nb_tree[2])) # 4 * 3 ?
+    heuristique = game.nutrients * 3 - (3 * game.day_left) # point de soleil gagné = nutrients * 3) - (point de soleil non généré)
+    debug("COMPLETE ", cell, "\n", "heuristique =", heuristique, "game.nutrients = ", game.nutrients, "game.day_left = ", game.day_left, "game.day =", game.day)
+    # on deduit le l'ombre qui nous genere
+    # on ajoute l'ombre qu'il genere sur l'ennemie
+    own_block = 0
+    ennemy_block = 0
+    for day in range(6): # ombrage généré supplémentaire
+        for i in range(len(map[cell].shadow_potential[day])):
+            if map[map[cell].shadow_potential[day][i]].size_tree == map[cell].size_tree:
+                if map[map[cell].shadow_potential[day][i]].own:
+                    own_block += map[map[cell].shadow_potential[day][i]].size_tree
+                else:
+                    ennemy_block += map[map[cell].shadow_potential[day][i]].size_tree
+    heuristique += own_block * game.day_left / 6 # nb de point de soleil qu'on se deny par taille arbre * (temps de deny / 6)
+    heuristique -= ennemy_block * game.day_left / 6 # nb de point de soleil qu'on deny par taille arbre * (temps de deny / 6)
+    debug("apres les deny d'ombres", "heuristique =", heuristique)
+    heuristique += map[cell].size_tree if days_before_shadowed(cell, game.day) == 1 else 0 #soleil gagné en le montant maintenant
+    heuristique += nb_tree[2] # soleil perdu pour refaire pousser un arbre
     heuristique += calcul_point_richness(cell) * 4
     return heuristique
 
 #  dans la liste des 3 meilleurs action (seed, grow, complete) :
 # - if no size_tree == 0 : SEED and day_left = enough to pousser l'arbre
 # - Forcer full complete sur la fin and forcer complete a max tree (size 3) en fonction calcul premier tour
-
-
-# ON NE PLANTE PAS D UN ARBRE NIVEAU 1
 
 def calcul_heuristique(action):
     list_action = action.split()
@@ -285,8 +287,11 @@ def calcul_heuristique(action):
 
 def reception_info():
     # general game infos
+    reset_infos()
     game.day = int(input())  # the game lasts 24 days: 0-23
     game.nutrients = int(input())  # the base score you gain from the next COMPLETE action
+    game.day_left = 24 - game.day
+
 
     # nos game infos
     game.sun, game.score = [int(i) for i in input().split()]
@@ -296,7 +301,7 @@ def reception_info():
 
     # infos trees
     game.number_of_trees = int(input())  # the current amount of trees
-    reset_infos()
+    
     for i in range(game.number_of_trees):
         inputs = input().split()
         cell_index = int(inputs[0])  # location of this tree
@@ -322,13 +327,12 @@ if __name__ == "__main__":
             # map[cell][day] = shadows_generated_by_this_cell(cell, day, 3)
             map[cell].shadow_potential[day] = shadows_generated_by_this_cell(cell, day, 3)
     
-    debug("ombre generes par map[0].shadow_potential : ", map[0].shadow_potential)
+    # debug("ombre generes par map[0].shadow_potential : ", map[0].shadow_potential)
 
     while True:
-        
         reception_info()
-        
-        # 
+        debug("Bonjour, nous somme jour", game.day, "il reste donc", game.day_left, "jours")
+        debug("Il reste actuellement", game.nutrients, "nutriments")
         number_of_actions = int(input())  # all legal actions
         list_actions = []
         for i in range(number_of_actions):
@@ -338,8 +342,11 @@ if __name__ == "__main__":
 
 
         list_actions = sorted(list_actions, key=lambda x: x[1])
-        for action in list_actions:
-            debug("Action : ", action[0], " -- Heuristique : ", action[1], "\n")
+        # for action in list_actions:
+        #     debug("Action : ", action[0], " -- Heuristique : ", action[1], "\n")
+        if len(list_actions) > 5:
+            for i in range(int(len(list_actions) / 2), len(list_actions)):
+                debug("Action : ", list_actions[i][0], " -- Heuristique : ", list_actions[i][1], "\n")
         print(list_actions[-1][0], list_actions[-1][0])
     
 
